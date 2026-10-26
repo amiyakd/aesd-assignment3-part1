@@ -16,8 +16,19 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int status = system(cmd);
+    if(status == -1)
+    {
+	perror("system call failed");
+        return false;
+    }
 
-    return true;
+    if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
+    {
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -59,9 +70,43 @@ bool do_exec(int count, ...)
  *
 */
 
-    va_end(args);
+    pid_t pid = fork();
 
-    return true;
+    if(pid < 0)
+    {
+        perror("fork failed");
+	va_end(args);
+        return false;
+    }
+    else if(pid == 0)
+    {
+        execv(command[0], command);
+
+	perror("execv failed");
+	exit(EXIT_FAILURE);
+    }
+    else
+    {
+	int status;
+	va_end(args);
+
+	if(waitpid(pid, &status, 0) == -1)
+	{
+	    perror("waitpid failed");
+	    return false;
+	}
+
+	if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
+	{
+	    return true;
+	}
+
+	return false;
+    }
+
+    //va_end(args);
+
+    //return true;
 }
 
 /**
@@ -93,7 +138,58 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
-    va_end(args);
+    pid_t pid = fork();
 
-    return true;
+    if(pid < 0)
+    {
+        perror("fork failed");
+        va_end(args);
+        return false;
+    }
+    else if(pid == 0)
+    {
+	int fd = open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if(fd < 0)
+	{
+	    perror("Failed to open output file");
+            exit(EXIT_FAILURE);
+	}
+
+	if(dup2(fd, STDOUT_FILENO) < 0)
+	{
+	    perror("dup redirection failed");
+	    close(fd);
+            exit(EXIT_FAILURE);
+	}
+
+	close(fd);
+
+        execv(command[0], command);
+
+        perror("execv failed");
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        int status;
+        va_end(args);
+
+        if(waitpid(pid, &status, 0) == -1)
+        {
+            perror("waitpid failed");
+            return false;
+        }
+
+        if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+
+    //va_end(args);
+
+    //return true;
 }
